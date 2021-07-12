@@ -17,7 +17,9 @@ func Download(url string, dst io.Writer) error {
 	defer resp.Body.Close()
 
 	procInfo := make(chan connInfo)
-	go startProccessBar(getSize(resp), procInfo)
+
+	procBar := newProcessBar(getSize(resp), procInfo)
+	go procBar.start()
 
 	if _, err := copyContent(dst, resp.Body, procInfo); err != nil {
 		return err

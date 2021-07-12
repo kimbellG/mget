@@ -5,51 +5,56 @@ import (
 	"time"
 )
 
-func startProccessBar(size int, procInfo <-chan connInfo) {
-	start := time.Now()
-	tick := time.Tick(time.Millisecond * 400)
+type processBar struct {
+	size        int
+	startOfTime time.Time
+	cur         connInfo
+	procInfo    <-chan connInfo
+	ticker      *time.Ticker
+}
+
+func newProcessBar(size int, procInfo <-chan connInfo) *processBar {
+	return &processBar{
+		size:        size,
+		startOfTime: time.Now(),
+		procInfo:    procInfo,
+		ticker:      time.NewTicker(time.Millisecond * 400),
+	}
+}
+
+func (p *processBar) start() {
+	defer p.ticker.Stop()
+	var ok bool
 
 	for {
 		select {
-		case <-tick:
-			cur, ok := <-procInfo
+		case <-p.ticker.C:
+			p.printInfo()
+
+		case p.cur, ok = <-p.procInfo:
 			if !ok {
 				return
 			}
-
-			speed := getSpeed(start, cur)
-			fmt.Printf("                                                                     \r")
-			fmt.Printf("[%v]\t%d %.1f Kb/s %.1f s.\r", getProccessString(size, cur.written),
-				getProccessInPercent(size, cur.written), speed, getRemainingTime(speed, size-cur.written))
 		}
 	}
 }
 
-func getProccessString(size, cur int) string {
-	const percentInOneChar = 5
+func (p *processBar) printInfo() {
+	proc := p.getProccessInPercent()
+	procStr := newProcessingString(5)
 
-	procstr := make([]byte, int(100/percentInOneChar))
-	percentOfDownloaded := getProccessInPercent(size, cur)
-
-	for i, _ := range procstr {
-		if (i+1)*percentInOneChar < int(percentOfDownloaded) {
-			procstr[i] = '#'
-		} else {
-			procstr[i] = ' '
-		}
-	}
-
-	return string(procstr)
+	fmt.Printf("                                                                     \r")
+	fmt.Printf("[%v]\t%d%% %.1f Kb/s %.1f s.\r", procStr.get(proc), proc, p.getSpeed(), p.getRemainingTime())
 }
 
-func getSpeed(start time.Time, cur connInfo) float64 {
-	return float64(cur.written/1000) / float64(cur.t.Sub(start)/time.Second)
+func (p *processBar) getProccessInPercent() int {
+	return int(float64(p.cur.written) / float64(p.size) * 100)
 }
 
-func getRemainingTime(speed float64, remainingSize int) float64 {
-	return float64(remainingSize/1000) / speed
+func (p *processBar) getSpeed() float64 {
+	return float64(p.cur.written/1000) / float64(p.cur.t.Sub(p.startOfTime)/time.Second)
 }
 
-func getProccessInPercent(size, cur int) int {
-	return int(float64(cur) / float64(size) * 100)
+func (p *processBar) getRemainingTime() float64 {
+	return float64((p.size-p.cur.written)/1000) / p.getSpeed()
 }
